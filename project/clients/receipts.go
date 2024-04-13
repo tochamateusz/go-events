@@ -12,6 +12,15 @@ import (
 type ReceiptsClient struct {
 	clients *clients.Clients
 }
+type IssueReceiptRequest struct {
+	TicketID string
+	Price    Price
+}
+
+type Price struct {
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+}
 
 func NewReceiptsClient(clients *clients.Clients) ReceiptsClient {
 	return ReceiptsClient{
@@ -19,15 +28,20 @@ func NewReceiptsClient(clients *clients.Clients) ReceiptsClient {
 	}
 }
 
-func (c ReceiptsClient) IssueReceipt(ctx context.Context, ticketID string) error {
+func (c ReceiptsClient) IssueReceipt(ctx context.Context, request IssueReceiptRequest) error {
 	body := receipts.PutReceiptsJSONRequestBody{
-		TicketId: ticketID,
+		TicketId: request.TicketID,
+		Price: receipts.Money{
+			MoneyAmount:   request.Price.Amount,
+			MoneyCurrency: request.Price.Currency,
+		},
 	}
 
 	receiptsResp, err := c.clients.Receipts.PutReceiptsWithResponse(ctx, body)
 	if err != nil {
 		return err
 	}
+
 	if receiptsResp.StatusCode() != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %v", receiptsResp.StatusCode())
 	}

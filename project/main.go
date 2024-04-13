@@ -1,21 +1,22 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
+	"os/signal"
 	backgroundworkers "tickets/background-workers"
 	externalClients "tickets/clients"
+	"tickets/ports"
+
+	commonHTTP "github.com/ThreeDotsLabs/go-event-driven/common/http"
 
 	"github.com/ThreeDotsLabs/go-event-driven/common/clients"
-	commonHTTP "github.com/ThreeDotsLabs/go-event-driven/common/http"
 	"github.com/ThreeDotsLabs/go-event-driven/common/log"
-	"github.com/labstack/echo/v4"
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 )
-
-type TicketsConfirmationRequest struct {
-	Tickets []string `json:"tickets"`
-}
 
 func main() {
 	log.Init(logrus.InfoLevel)
@@ -28,39 +29,42 @@ func main() {
 	receiptsClient := externalClients.NewReceiptsClient(clients)
 	spreadsheetsClient := externalClients.NewSpreadsheetsClient(clients)
 
-	e := commonHTTP.NewEcho()
+	watermillLogger := log.NewWatermill(logrus.NewEntry(logrus.StandardLogger()))
 
-	w := backgroundworkers.NewWorker(receiptsClient, spreadsheetsClient)
+	router, err := message.NewRouter(message.RouterConfig{}, watermillLogger)
+	if err != nil {
+		panic(err)
+	}
+
+	w := backgroundworkers.NewWorker(receiptsClient, spreadsheetsClient, watermillLogger, router)
+	httpPort := ports.NewHttpPort(w)
 	go w.Run()
 
-	e.POST("/tickets-confirmation", func(c echo.Context) error {
-		var request TicketsConfirmationRequest
-		err := c.Bind(&request)
-		if err != nil {
+	e := commonHTTP.NewEcho()
+	e.GET("/health", httpPort.Health)
+	// e.POST("/tickets-status", httpPort.TicketsStatus)
+
+	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
+	defer cancel()
+
+	gr, ctx := errgroup.WithContext(ctx)
+
+	gr.Go(func() error {
+		<-router.Running()
+		logrus.Info("Server starting...")
+		err := e.Start(":8080")
+		if err != nil && err != http.ErrServerClosed {
 			return err
 		}
 
-		for _, ticket := range request.Tickets {
-
-			w.Send(backgroundworkers.Message{
-				Task:     backgroundworkers.TaskIssueReceipt,
-				TicketID: ticket,
-			})
-
-			w.Send(backgroundworkers.Message{
-				Task:     backgroundworkers.TaskAppendToTracker,
-				TicketID: ticket,
-			})
-
-		}
-
-		return c.NoContent(http.StatusOK)
+		return nil
 	})
 
-	logrus.Info("Server starting...")
-
-	err = e.Start(":8080")
-	if err != nil && err != http.ErrServerClosed {
+	err = gr.Wait()
+	if err != nil {
 		panic(err)
 	}
+	<-ctx.Done()
+
 }

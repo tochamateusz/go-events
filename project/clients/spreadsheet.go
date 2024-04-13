@@ -19,6 +19,12 @@ func NewSpreadsheetsClient(clients *clients.Clients) SpreadsheetsClient {
 	}
 }
 
+type PrintTicketPayload struct {
+	TicketId      string
+	CustomerEmail string
+	Price         Price
+}
+
 func (c SpreadsheetsClient) AppendRow(ctx context.Context, spreadsheetName string, row []string) error {
 	request := spreadsheets.PostSheetsSheetRowsJSONRequestBody{
 		Columns: row,
