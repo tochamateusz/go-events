@@ -26,6 +26,8 @@ type TicketsStatusRequest struct {
 }
 
 func (h *HttpPort) TicketsStatus(c echo.Context) error {
+	correlationId := c.Request().Header.Get("Correlation-ID")
+
 	ticketsStatusRequest := TicketsStatusRequest{}
 	err := json.NewDecoder(c.Request().Body).Decode(&ticketsStatusRequest)
 	if err != nil {
@@ -35,7 +37,8 @@ func (h *HttpPort) TicketsStatus(c echo.Context) error {
 
 	for _, ticket := range ticketsStatusRequest.Tickets {
 		h.w.Send(backgroundworkers.Message{
-			Ticket: ticket,
+			CorrelationId: correlationId,
+			Ticket:        ticket,
 		})
 
 	}

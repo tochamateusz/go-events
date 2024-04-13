@@ -13,6 +13,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-redisstream/pkg/redisstream"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/errgroup"
@@ -27,10 +28,11 @@ type Worker struct {
 }
 
 type Message struct {
-	Ticket tickets.Ticket
+	CorrelationId string
+	Ticket        tickets.Ticket
 }
 
-func (w *Worker) IssueReceiptHandler(msg *message.Message) error {
+func (w *Worker) issueReceiptHandler(msg *message.Message) error {
 	event := TicketEvent{}
 	err := json.Unmarshal(msg.Payload, &event)
 	if err != nil {
@@ -139,7 +141,7 @@ func NewWorker(
 		spreadsheetsClient: spreadsheetsClient,
 	}
 
-	router.AddNoPublisherHandler("issue-receipt-handler", TicketBookingConfirmed, issuerSub, worker.IssueReceiptHandler)
+	router.AddNoPublisherHandler("issue-receipt-handler", TicketBookingConfirmed, issuerSub, worker.issueReceiptHandler)
 	router.AddNoPublisherHandler("ticket-booking-confirmed", TicketBookingConfirmed, confirmedBookingSub, worker.bookingConfirmed)
 	router.AddNoPublisherHandler("ticket-booking-canceled", TicketBookingCanceled, canceledBookingSub, worker.bookingCanceled)
 
@@ -166,6 +168,10 @@ type Header struct {
 	PublishedAt string `json:"published_at"`
 }
 
+type Meta struct {
+	CorrelationId string `json:"correlation_id"`
+}
+
 func NewHeader() Header {
 	return Header{
 		Id:          uuid.NewString(),
@@ -178,6 +184,7 @@ var TicketBookingCanceled = "TicketBookingCanceled"
 
 type TicketEvent struct {
 	Header        Header `json:"header"`
+	Meta          Meta   `json:"meta"`
 	TicketId      string `json:"ticket_id"`
 	CustomerEmail string `json:"customer_email"`
 	Price         Price  `json:"price"`
@@ -187,6 +194,7 @@ func (w *Worker) Send(msg Message) {
 
 	ticketEvent := TicketEvent{
 		Header:        NewHeader(),
+		Meta:          Meta{CorrelationId: msg.CorrelationId},
 		TicketId:      msg.Ticket.TicketId,
 		CustomerEmail: msg.Ticket.CustomerEmail,
 		Price: Price{
@@ -199,7 +207,10 @@ func (w *Worker) Send(msg Message) {
 	if err != nil {
 		return
 	}
+
 	borkerMsg := message.NewMessage(watermill.NewUUID(), payload)
+	middleware.SetCorrelationID(msg.CorrelationId, borkerMsg)
+
 	if msg.Ticket.Status == "confirmed" {
 		w.publisher.Publish(TicketBookingConfirmed, borkerMsg)
 	}

@@ -7,7 +7,6 @@ import (
 
 	"github.com/ThreeDotsLabs/go-event-driven/common/clients"
 	"github.com/ThreeDotsLabs/go-event-driven/common/clients/receipts"
-	"github.com/sirupsen/logrus"
 )
 
 type ReceiptsClient struct {
@@ -37,8 +36,6 @@ func (c ReceiptsClient) IssueReceipt(ctx context.Context, request IssueReceiptRe
 			MoneyCurrency: request.Price.Currency,
 		},
 	}
-
-	logrus.Infof("IssueReceipt: %+v\n", body)
 
 	receiptsResp, err := c.clients.Receipts.PutReceiptsWithResponse(ctx, body)
 	if err != nil {

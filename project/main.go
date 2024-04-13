@@ -8,12 +8,15 @@ import (
 	backgroundworkers "tickets/background-workers"
 	externalClients "tickets/clients"
 	"tickets/ports"
+	"tickets/ports/decorators"
+	"time"
 
 	commonHTTP "github.com/ThreeDotsLabs/go-event-driven/common/http"
 
 	"github.com/ThreeDotsLabs/go-event-driven/common/clients"
 	"github.com/ThreeDotsLabs/go-event-driven/common/log"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )
@@ -21,7 +24,10 @@ import (
 func main() {
 	log.Init(logrus.InfoLevel)
 
-	clients, err := clients.NewClients(os.Getenv("GATEWAY_ADDR"), nil)
+	clients, err := clients.NewClients(os.Getenv("GATEWAY_ADDR"), func(ctx context.Context, req *http.Request) error {
+		req.Header.Set("Correlation-ID", log.CorrelationIDFromContext(ctx))
+		return nil
+	})
 	if err != nil {
 		panic(err)
 	}
@@ -35,6 +41,21 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	router.AddMiddleware(middleware.CorrelationID)
+
+	router.AddMiddleware(decorators.CorrelationID)
+	router.AddMiddleware(decorators.UUID)
+
+	router.AddMiddleware(
+		middleware.Retry{
+			MaxRetries:      10,
+			InitialInterval: time.Millisecond * 100,
+			MaxInterval:     time.Second,
+			Multiplier:      2,
+			Logger:          watermillLogger,
+		}.Middleware,
+	)
 
 	w := backgroundworkers.NewWorker(receiptsClient, spreadsheetsClient, watermillLogger, router)
 	httpPort := ports.NewHttpPort(w)
