@@ -33,17 +33,8 @@ func (h *HttpPort) TicketsStatus(c echo.Context) error {
 		return err
 	}
 
-	logrus.Infof("TicketsStatus %+v\n", ticketsStatusRequest.Tickets)
-
 	for _, ticket := range ticketsStatusRequest.Tickets {
-
 		h.w.Send(backgroundworkers.Message{
-			Task:   backgroundworkers.TaskIssueReceipt,
-			Ticket: ticket,
-		})
-
-		h.w.Send(backgroundworkers.Message{
-			Task:   backgroundworkers.TaskAppendToTracker,
 			Ticket: ticket,
 		})
 
