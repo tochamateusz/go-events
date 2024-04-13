@@ -42,7 +42,7 @@ func main() {
 
 	e := commonHTTP.NewEcho()
 	e.GET("/health", httpPort.Health)
-	// e.POST("/tickets-status", httpPort.TicketsStatus)
+	e.POST("/tickets-status", httpPort.TicketsStatus)
 
 	ctx := context.Background()
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)

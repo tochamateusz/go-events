@@ -35,20 +35,28 @@ func (w *Worker) IssueReceiptHandler(msg *message.Message) error {
 	if err != nil {
 		return err
 	}
-	err = w.receiptsClient.IssueReceipt(context.Background(), clients.IssueReceiptRequest{
-		TicketID: ticket.TicketId,
-		Price: clients.Price{
-			Amount:   ticket.Price.Amount,
-			Currency: ticket.Price.Currency,
-		},
-	})
+
+	err = w.receiptsClient.IssueReceipt(
+		msg.Context(),
+		clients.IssueReceiptRequest{
+			TicketID: ticket.TicketId,
+			Price: clients.Price{
+				Amount:   ticket.Price.Amount,
+				Currency: ticket.Price.Currency,
+			},
+		})
 	return err
 }
 
 func (w *Worker) AppendToTrackerHandler(msg *message.Message) error {
 	ticket := tickets.Ticket{}
-	err := w.spreadsheetsClient.AppendRow(
-		context.Background(),
+	err := json.Unmarshal(msg.Payload, &ticket)
+	if err != nil {
+		return err
+	}
+
+	err = w.spreadsheetsClient.AppendRow(
+		msg.Context(),
 		"tickets-to-print",
 		[]string{
 			ticket.TicketId,
@@ -56,6 +64,7 @@ func (w *Worker) AppendToTrackerHandler(msg *message.Message) error {
 			ticket.Price.Amount,
 			ticket.Price.Currency,
 		})
+
 	return err
 }
 
